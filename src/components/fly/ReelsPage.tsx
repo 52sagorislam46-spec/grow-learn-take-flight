@@ -106,7 +106,12 @@ function Reel({
     revealControls();
   };
 
-  const liked = !!user && post.likes.includes(user.uid);
+  const preloaded = isPreloadedReel(post.id);
+  const [localLiked, setLocalLiked] = useState(false);
+  const liked = preloaded ? localLiked : !!user && post.likes.includes(user.uid);
+  const likeCount = preloaded
+    ? Math.floor((post.views ?? 0) / 12) + (localLiked ? 1 : 0)
+    : post.likes.length;
   const ref = doc(db, "posts", post.id);
   const vipLocked =
     !!post.exclusive && user?.uid !== post.authorId && !isVipOf(profile, post.authorId) && !isAdminVip(profile);
