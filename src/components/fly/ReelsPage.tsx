@@ -8,6 +8,7 @@ import { ReactionsSheet } from "./ReactionsSheet";
 import { formatViews, registerView } from "./views";
 import { useAuth } from "./AuthContext";
 import { useReels } from "./usePosts";
+import { PRELOADED_REELS, isPreloadedReel } from "./preloadedReels";
 import { TagFilterBar, collectTags, filterByTag } from "./TagFilterBar";
 import { rankForYou, recordLike, recordWatch, stableAppend, trendingTags } from "./recommend";
 import { CommentItem } from "./PostCard";
@@ -106,7 +107,12 @@ function Reel({
     revealControls();
   };
 
-  const liked = !!user && post.likes.includes(user.uid);
+  const preloaded = isPreloadedReel(post.id);
+  const [localLiked, setLocalLiked] = useState(false);
+  const liked = preloaded ? localLiked : !!user && post.likes.includes(user.uid);
+  const likeCount = preloaded
+    ? Math.floor((post.views ?? 0) / 12) + (localLiked ? 1 : 0)
+    : post.likes.length;
   const ref = doc(db, "posts", post.id);
   const vipLocked =
     !!post.exclusive && user?.uid !== post.authorId && !isVipOf(profile, post.authorId) && !isAdminVip(profile);
@@ -216,6 +222,10 @@ function Reel({
   const toggleLike = async () => {
     if (!user) return;
     recordLike(post, !liked);
+    if (preloaded) {
+      setLocalLiked(!liked);
+      return;
+    }
     await updateDoc(ref, {
       likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid),
     });
@@ -224,7 +234,9 @@ function Reel({
   const likeFromDoubleTap = () => {
     setHeartBurst(true);
     setTimeout(() => setHeartBurst(false), 800);
-    if (user && !liked) {
+    if (user && !liked && preloaded) {
+      setLocalLiked(true);
+    } else if (user && !liked) {
       updateDoc(ref, { likes: arrayUnion(user.uid) }).catch(() => {});
     }
   };
@@ -261,6 +273,11 @@ function Reel({
       ...(isVipOf(profile, post.authorId) ? { vip: true } : {}),
     };
     try {
+      if (preloaded) {
+        post.comments.push(comment);
+        setCommentText("");
+        return;
+      }
       await updateDoc(ref, { comments: arrayUnion(comment) });
       setCommentText("");
     } finally {
@@ -460,7 +477,7 @@ function Reel({
           className="-mt-5 text-xs font-medium"
           aria-label="See who reacted"
         >
-          {formatViews(post.likes.length)}
+          {formatViews(likeCount)}
         </button>
         <button
           onClick={() => setShowComments(true)}
@@ -489,7 +506,7 @@ function Reel({
 
       <div className="absolute left-0 right-16 bottom-20 px-4 text-white">
         <button
-          onClick={() => onOpenProfile(post.authorId)}
+          onClick={() => !preloaded && onOpenProfile(post.authorId)}
           className="flex items-center gap-2"
         >
           <Avatar uid={post.authorId} src={post.authorPhoto} alt={post.authorName} size={36} />
@@ -722,7 +739,17 @@ export function ReelsPage({
 
 
   const allReels = useMemo(
-    () => allReelsRaw.filter((p) => secureUrl(p.mediaUrl)),
+    () => {
+      const real = allReelsRaw.filter((p) => secureUrl(p.mediaUrl));
+      // Blend preloaded reels in: one after every 2 real reels, rest at the end.
+      const out: typeof real = [];
+      let k = 0;
+      real.forEach((p, i) => {
+        out.push(p);
+        if (i % 2 === 1 && k < PRELOADED_REELS.length) out.push(PRELOADED_REELS[k++]!);
+      });
+      return [...out, ...PRELOADED_REELS.slice(k)];
+    },
     [allReelsRaw],
   );
   const reelOrderRef = useRef<string[]>([]);
