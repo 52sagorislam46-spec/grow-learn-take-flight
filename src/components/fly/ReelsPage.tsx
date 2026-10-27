@@ -734,8 +734,7 @@ export function ReelsPage({
   // in the feed (unless the user explicitly muted) and keep it for every next reel.
   const userMutedRef = useRef(false);
   useEffect(() => {
-    const el = feedRef.current;
-    if (!el) return;
+    const el = document;
     const unmute = () => {
       if (!userMutedRef.current) setMuted(false);
     };
