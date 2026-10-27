@@ -516,9 +516,9 @@ function Reel({
           <span className="text-xs text-white/60">· {timeAgo(post.createdAt)}</span>
 
         </button>
-        {post.text && (
+        {post.text && post.text.replace(/#[\p{L}\p{N}_]+/gu, "").trim() && (
           <p className="select-text mt-2 text-sm text-white/90 line-clamp-3 whitespace-pre-wrap break-words">
-            {post.text}
+            {post.text.replace(/#[\p{L}\p{N}_]+/gu, "").trim()}
           </p>
         )}
         {post.product?.title && !vipLocked && (
@@ -730,6 +730,17 @@ export function ReelsPage({
   } = useReels(10);
   const { profile } = useAuth();
   const [muted, setMuted] = useState(true);
+  // Sound on: browsers only allow audio after a touch, so unmute on the first tap
+  // in the feed (unless the user explicitly muted) and keep it for every next reel.
+  const userMutedRef = useRef(false);
+  useEffect(() => {
+    const el = document;
+    const unmute = () => {
+      if (!userMutedRef.current) setMuted(false);
+    };
+    el.addEventListener("pointerdown", unmute, { once: true, capture: true });
+    return () => el.removeEventListener("pointerdown", unmute, { capture: true });
+  }, []);
   const [tag, setTag] = useState<string | null>(null);
   const [tab, setTab] = useState<"reels" | "friends">("reels");
   const feedRef = useRef<HTMLDivElement | null>(null);
@@ -909,7 +920,7 @@ export function ReelsPage({
               <Reel
                 post={p}
                 muted={muted}
-                onToggleMute={() => setMuted((m) => !m)}
+                onToggleMute={() => setMuted((m) => { userMutedRef.current = !m; return !m; })}
                 onOpenProfile={onOpenProfile}
               />
             </div>
